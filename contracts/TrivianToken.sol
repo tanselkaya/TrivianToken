@@ -19,11 +19,11 @@ contract TrivianToken is ERC20, ERC20Burnable, Pausable, Ownable {
     }
     
     // Trivian Token can be paused
-    function pause() public onlyOwner {
+    function pause() external onlyOwner {
         _pause();
     }
 
-    function unpause() public onlyOwner {
+    function unpause() external onlyOwner {
         _unpause();
     }
 
