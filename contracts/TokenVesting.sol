@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.11;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts@4.6.0/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts@4.6.0/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts@4.6.0/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts@4.6.0/access/Ownable.sol";
+import "@openzeppelin/contracts@4.6.0/utils/math/Math.sol";
 
 /**
  * @title TokenVesting
@@ -151,15 +151,18 @@ contract TokenVesting is Ownable, ReentrancyGuard{
         bool _revocable,
         uint256 _amount
     )
-        public
+        external
         onlyOwner{
         require(
             this.getWithdrawableAmount() >= _amount,
             "TokenVesting: cannot create vesting schedule because not sufficient tokens"
         );
+        require(_beneficiary != address(0x0), "TokenVesting: beneficiary address should be non-zero");
         require(_duration > 0, "TokenVesting: duration must be > 0");
         require(_amount > 0, "TokenVesting: amount must be > 0");
         require(_slicePeriodSeconds >= 1, "TokenVesting: slicePeriodSeconds must be >= 1");
+        require(_duration >= _cliff, "TokenVesting: no vesting possible with cliff duration");
+
         bytes32 vestingScheduleId = this.computeNextVestingScheduleIdForHolder(_beneficiary);
         uint256 cliff = _start+_cliff;
         vestingSchedules[vestingScheduleId] = VestingSchedule(
@@ -185,7 +188,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @param vestingScheduleId the vesting schedule identifier
     */
     function revoke(bytes32 vestingScheduleId)
-        public
+        external
         onlyOwner
         onlyIfVestingScheduleNotRevoked(vestingScheduleId){
         VestingSchedule storage vestingSchedule = vestingSchedules[vestingScheduleId];
@@ -204,11 +207,30 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @param amount the amount to withdraw
     */
     function withdraw(uint256 amount)
-        public
+        external
         nonReentrant
         onlyOwner{
         require(this.getWithdrawableAmount() >= amount, "TokenVesting: not enough withdrawable funds");
         _token.safeTransfer(owner(), amount);
+    }
+
+    /**
+    * @notice Function to withdraw stuck ERC-20 tokens
+    * @param tokenAddress token type to withdraw
+    */
+    function withdrawOtherTokens(address tokenAddress)
+        external
+        nonReentrant
+        onlyOwner{
+        
+        require(tokenAddress != address(0x0), "TokenVesting: invalid token address");
+        IERC20 tokenInterface = IERC20(tokenAddress);        
+        require(tokenInterface != _token, "TokenVesting: use withdraw for contract token");
+
+        uint256 balance = tokenInterface.balanceOf(address(this));
+        require(balance > 0, "TokenVesting: no funds to withdraw");
+
+        tokenInterface.safeTransfer(owner(), balance);
     }
 
     /**
@@ -233,7 +255,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
         uint256 vestedAmount = _computeReleasableAmount(vestingSchedule);
         require(vestedAmount >= amount, "TokenVesting: cannot release tokens, not enough vested tokens");
         vestingSchedule.released = vestingSchedule.released + amount;
-        address payable beneficiaryPayable = payable(vestingSchedule.beneficiary);
+        address beneficiaryPayable = vestingSchedule.beneficiary;
         vestingSchedulesTotalAmount = vestingSchedulesTotalAmount - amount;
         _token.safeTransfer(beneficiaryPayable, amount);
     }
@@ -254,7 +276,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @return the vested amount
     */
     function computeReleasableAmount(bytes32 vestingScheduleId)
-        public
+        external
         onlyIfVestingScheduleNotRevoked(vestingScheduleId)
         view
         returns(uint256){
@@ -278,7 +300,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @return the amount of tokens
     */
     function getWithdrawableAmount()
-        public
+        external
         view
         returns(uint256){
         return _token.balanceOf(address(this)) - vestingSchedulesTotalAmount;
@@ -288,7 +310,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @dev Computes the next vesting schedule identifier for a given holder address.
     */
     function computeNextVestingScheduleIdForHolder(address holder)
-        public
+        external
         view
         returns(bytes32){
         return computeVestingScheduleIdForAddressAndIndex(holder, holdersVestingCount[holder]);
@@ -298,7 +320,7 @@ contract TokenVesting is Ownable, ReentrancyGuard{
     * @dev Returns the last vesting schedule for a given holder address.
     */
     function getLastVestingScheduleForHolder(address holder)
-        public
+        external
         view
         returns(VestingSchedule memory){
         return vestingSchedules[computeVestingScheduleIdForAddressAndIndex(holder, holdersVestingCount[holder] - 1)];
